@@ -1,15 +1,12 @@
 name: Project Management Automation
 
 on:
-  # Срабатывает при создании и изменении issues
   issues:
     types: [opened, labeled, assigned, closed]
-  # Срабатывает при создании и изменении pull requests
   pull_request:
     types: [opened, labeled, assigned, closed, ready_for_review]
 
 jobs:
-  # Автоматически добавляет новые задачи в проект
   add-to-project:
     runs-on: ubuntu-latest
     steps:
@@ -17,13 +14,10 @@ jobs:
         uses: actions/add-to-project@v0.5.0
         if: github.event_name == 'issues' && github.event.action == 'opened'
         with:
-          # URL вашего проекта
           project-url: https://github.com/orgs/RPO-Project-2025/projects/3
-          # В какую колонку добавлять новые задачи
           column-name: 'To Do'
           github-token: ${{ secrets.PROJECT_PAT }}
 
-  # Автоматически перемещает задачи при изменении статуса
   move-on-status-change:
     runs-on: ubuntu-latest
     steps:
@@ -56,3 +50,40 @@ jobs:
           project-url: https://github.com/orgs/RPO-Project-2025/projects/3
           column-name: 'Done'
           github-token: ${{ secrets.PROJECT_PAT }}
+
+  telegram-notification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send notification to Telegram
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🎯 *${{ github.repository }}*
+            
+            {% raw %}
+            {% if github.event_name == 'issues' and github.event.action == 'opened' %}
+            📝 *Новая задача*: ${{ github.event.issue.title }}
+            👤 *Автор*: ${{ github.event.issue.user.login }}
+            🔗 *Ссылка*: ${{ github.event.issue.html_url }}
+            {% if github.event.issue.labels[0] %}🏷️ *Метки*: {% for label in github.event.issue.labels %}${{ label.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+            
+            {% elsif github.event_name == 'issues' and github.event.action == 'closed' %}
+            ✅ *Задача закрыта*: ${{ github.event.issue.title }}
+            👤 *Закрыл*: ${{ github.event.issue.user.login }}
+            
+            {% elsif github.event_name == 'pull_request' and github.event.action == 'opened' %}
+            🔀 *Новый Pull Request*: ${{ github.event.pull_request.title }}
+            👤 *Автор*: ${{ github.event.pull_request.user.login }}
+            🔗 *Ссылка*: ${{ github.event.pull_request.html_url }}
+            
+            {% elsif github.event_name == 'pull_request' and github.event.action == 'ready_for_review' %}
+            👀 *PR готов к проверке*: ${{ github.event.pull_request.title }}
+            👤 *Автор*: ${{ github.event.pull_request.user.login }}
+            
+            {% else %}
+            ℹ️ *Событие*: ${{ github.event_name }} - ${{ github.event.action }}
+            {% endif %}
+            {% endraw %}
+          format: "html"
