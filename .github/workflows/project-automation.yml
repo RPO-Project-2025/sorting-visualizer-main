@@ -1,16 +1,11 @@
 name: Project Management Automation
 
 on:
-  # Основные события
+  # Основные события - убрали лишние типы
   issues:
-    types: [opened, closed, edited, assigned, unassigned, labeled, unlabeled]
+    types: [opened, closed]
   pull_request:
-    types: [opened, closed, edited, ready_for_review, review_requested, assigned, unassigned, labeled, unlabeled]
-  project_card:
-    types: [created, moved, deleted]
-  # Расписание для еженедельного отчета (каждое воскресенье в 10:00)
-  schedule:
-    - cron: '0 10 * * 0'
+    types: [opened, closed, ready_for_review]
 
 jobs:
   # Автоматически добавляет новые задачи в проект
@@ -29,7 +24,8 @@ jobs:
         uses: actions/add-to-project@v0.5.0
         if: |
           github.event_name == 'issues' && 
-          github.event.action == 'assigned'
+          github.event.action == 'opened' &&
+          github.event.issue.assignee != null
         with:
           project-url: https://github.com/orgs/RPO-Project-2025/projects/3
           column-name: 'In Progress'
@@ -55,9 +51,16 @@ jobs:
           column-name: 'Done'
           github-token: ${{ secrets.PROJECT_PAT }}
 
-  # Умные Telegram уведомления
+  # Умные Telegram уведомления - только для ключевых событий
   telegram-smart-notifications:
     runs-on: ubuntu-latest
+    # Пропускаем уведомления для неважных событий
+    if: |
+      (github.event_name == 'issues' && github.event.action == 'opened') ||
+      (github.event_name == 'issues' && github.event.action == 'closed') ||
+      (github.event_name == 'pull_request' && github.event.action == 'opened') ||
+      (github.event_name == 'pull_request' && github.event.action == 'closed') ||
+      (github.event_name == 'pull_request' && github.event.action == 'ready_for_review')
     steps:
       - name: Prepare notification data
         id: prepare
@@ -66,60 +69,31 @@ jobs:
           EVENT_TYPE="${{ github.event_name }}"
           ACTION_TYPE="${{ github.event.action }}"
           
-          # Формируем базовое сообщение
           if [ "$EVENT_TYPE" = "issues" ]; then
             TITLE="${{ github.event.issue.title }}"
             AUTHOR="${{ github.event.issue.user.login }}"
             URL="${{ github.event.issue.html_url }}"
-            ASSIGNEE="${{ github.event.issue.assignee.login }}"
-            LABELS="${{ join(github.event.issue.labels.*.name, ', ') }}"
             
-            case "$ACTION_TYPE" in
-              "opened")
-                EMOJI="📝"
-                ACTION_TEXT="Новая задача"
-                EXTRA_INFO=""
-                if [ -n "$LABELS" ] && [ "$LABELS" != " " ]; then
-                  EXTRA_INFO="🏷️ *Метки:* $LABELS%0A"
-                fi
-                if [ -n "$ASSIGNEE" ] && [ "$ASSIGNEE" != " " ]; then
-                  EXTRA_INFO="${EXTRA_INFO}👤 *Исполнитель:* $ASSIGNEE%0A"
-                fi
-                ;;
-              "closed")
-                EMOJI="✅"
-                ACTION_TEXT="Задача закрыта"
-                EXTRA_INFO=""
-                ;;
-              "assigned")
-                EMOJI="👤"
-                ACTION_TEXT="Назначен исполнитель"
-                ASSIGNER="${{ github.event.sender.login }}"
-                EXTRA_INFO="📌 *Назначил:* $ASSIGNER%0A👤 *Исполнитель:* $ASSIGNEE%0A"
-                ;;
-              "unassigned")
-                EMOJI="🚫"
-                ACTION_TEXT="Исполнитель удален"
-                EXTRA_INFO="👤 *Был назначен:* $ASSIGNEE%0A"
-                ;;
-              "labeled")
-                EMOJI="🏷️"
-                ACTION_TEXT="Добавлена метка"
-                LABEL_ADDED="${{ github.event.label.name }}"
-                EXTRA_INFO="📌 *Метка:* $LABEL_ADDED%0A"
-                ;;
-              "unlabeled")
-                EMOJI="🏷️"
-                ACTION_TEXT="Удалена метка"
-                LABEL_REMOVED="${{ github.event.label.name }}"
-                EXTRA_INFO="📌 *Метка:* $LABEL_REMOVED%0A"
-                ;;
-              *)
-                EMOJI="ℹ️"
-                ACTION_TEXT="Изменена задача"
-                EXTRA_INFO=""
-                ;;
-            esac
+            if [ "$ACTION_TYPE" = "opened" ]; then
+              EMOJI="📝"
+              ACTION_TEXT="Новая задача"
+              
+              # Собираем всю информацию о задаче
+              ASSIGNEE="${{ github.event.issue.assignee && github.event.issue.assignee.login || 'Не назначен' }}"
+              LABELS="${{ join(github.event.issue.labels.*.name, ', ') }}"
+              
+              EXTRA_INFO=""
+              if [ -n "$LABELS" ] && [ "$LABELS" != " " ]; then
+                EXTRA_INFO="${EXTRA_INFO}🏷️ *Метки:* $LABELS%0A"
+              fi
+              EXTRA_INFO="${EXTRA_INFO}👤 *Исполнитель:* $ASSIGNEE%0A"
+              
+            elif [ "$ACTION_TYPE" = "closed" ]; then
+              EMOJI="✅"
+              ACTION_TEXT="Задача закрыта"
+              CLOSED_BY="${{ github.event.issue.closed_by && github.event.issue.closed_by.login || github.event.sender.login }}"
+              EXTRA_INFO="🔒 *Закрыл:* $CLOSED_BY%0A"
+            fi
             
           elif [ "$EVENT_TYPE" = "pull_request" ]; then
             TITLE="${{ github.event.pull_request.title }}"
@@ -149,25 +123,7 @@ jobs:
                 ACTION_TEXT="PR готов к ревью"
                 EXTRA_INFO=""
                 ;;
-              "review_requested")
-                EMOJI="📋"
-                ACTION_TEXT="Запрошено ревью"
-                REVIEWER="${{ github.event.requested_reviewer.login }}"
-                EXTRA_INFO="👤 *Ревьюер:* $REVIEWER%0A"
-                ;;
-              *)
-                EMOJI="ℹ️"
-                ACTION_TEXT="Изменен PR"
-                EXTRA_INFO=""
-                ;;
             esac
-          else
-            EMOJI="⚙️"
-            ACTION_TEXT="Событие проекта"
-            TITLE=""
-            AUTHOR="${{ github.actor }}"
-            URL="https://github.com/${{ github.repository }}"
-            EXTRA_INFO=""
           fi
           
           # Сохраняем данные в output
@@ -218,27 +174,3 @@ jobs:
           else
             echo "✅ Сообщение успешно отправлено в Telegram"
           fi
-
-  # Еженедельный отчет о прогрессе (запускается каждое воскресенье)
-  weekly-report:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    steps:
-      - name: Send weekly progress report
-        run: |
-          MESSAGE="📊 *Еженедельный отчет по проекту*%0A%0A"
-          MESSAGE="${MESSAGE}🏆 *Статистика за неделю*%0A"
-          MESSAGE="${MESSAGE}📝 Новые задачи: ?%0A"
-          MESSAGE="${MESSAGE}✅ Завершенные задачи: ?%0A"
-          MESSAGE="${MESSAGE}🔀 Созданные PR: ?%0A"
-          MESSAGE="${MESSAGE}%0A"
-          MESSAGE="${MESSAGE}💡 *Рекомендации:*%0A"
-          MESSAGE="${MESSAGE}• Проверьте незавершенные задачи%0A"
-          MESSAGE="${MESSAGE}• Запланируйте работу на следующую неделю%0A"
-          MESSAGE="${MESSAGE}• Проведите код-ревью открытых PR"
-          
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "message_thread_id=2" \
-            -d "text=$MESSAGE" \
-            -d "parse_mode=Markdown"
