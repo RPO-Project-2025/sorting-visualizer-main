@@ -1,12 +1,16 @@
 name: Project Management Automation
 
 on:
+  # Основные события
   issues:
     types: [opened, closed, edited, assigned, unassigned, labeled, unlabeled]
   pull_request:
     types: [opened, closed, edited, ready_for_review, review_requested, assigned, unassigned, labeled, unlabeled]
   project_card:
     types: [created, moved, deleted]
+  # Расписание для еженедельного отчета (каждое воскресенье в 10:00)
+  schedule:
+    - cron: '0 10 * * 0'
 
 jobs:
   # Автоматически добавляет новые задачи в проект
@@ -67,7 +71,7 @@ jobs:
             TITLE="${{ github.event.issue.title }}"
             AUTHOR="${{ github.event.issue.user.login }}"
             URL="${{ github.event.issue.html_url }}"
-            ASSIGNEE="${{ github.event.issue.assignee && github.event.issue.assignee.login || '' }}"
+            ASSIGNEE="${{ github.event.issue.assignee.login }}"
             LABELS="${{ join(github.event.issue.labels.*.name, ', ') }}"
             
             case "$ACTION_TYPE" in
@@ -75,10 +79,10 @@ jobs:
                 EMOJI="📝"
                 ACTION_TEXT="Новая задача"
                 EXTRA_INFO=""
-                if [ -n "$LABELS" ]; then
+                if [ -n "$LABELS" ] && [ "$LABELS" != " " ]; then
                   EXTRA_INFO="🏷️ *Метки:* $LABELS%0A"
                 fi
-                if [ -n "$ASSIGNEE" ]; then
+                if [ -n "$ASSIGNEE" ] && [ "$ASSIGNEE" != " " ]; then
                   EXTRA_INFO="${EXTRA_INFO}👤 *Исполнитель:* $ASSIGNEE%0A"
                 fi
                 ;;
@@ -186,7 +190,7 @@ jobs:
           # Формируем финальное сообщение
           MESSAGE="$EMOJI *$ACTION_TEXT*%0A%0A"
           
-          if [ -n "$TITLE" ]; then
+          if [ -n "$TITLE" ] && [ "$TITLE" != " " ]; then
             MESSAGE="${MESSAGE}📌 *Заголовок:* $TITLE%0A"
           fi
           
@@ -238,7 +242,3 @@ jobs:
             -d "message_thread_id=2" \
             -d "text=$MESSAGE" \
             -d "parse_mode=Markdown"
-
-# Расписание для еженедельного отчета (каждое воскресенье в 10:00)
-schedule:
-  - cron: '0 10 * * 0'
