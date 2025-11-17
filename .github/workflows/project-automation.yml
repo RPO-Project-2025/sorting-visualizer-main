@@ -7,6 +7,7 @@ on:
     types: [opened, labeled, assigned, closed, ready_for_review]
 
 jobs:
+  # Автоматически добавляет новые задачи в проект
   add-to-project:
     runs-on: ubuntu-latest
     steps:
@@ -18,6 +19,7 @@ jobs:
           column-name: 'To Do'
           github-token: ${{ secrets.PROJECT_PAT }}
 
+  # Автоматически перемещает задачи при изменении статуса
   move-on-status-change:
     runs-on: ubuntu-latest
     steps:
@@ -51,7 +53,7 @@ jobs:
           column-name: 'Done'
           github-token: ${{ secrets.PROJECT_PAT }}
 
-    # Уведомление в Telegram о важных событиях
+  # Уведомление в Telegram о важных событиях
   telegram-notification:
     runs-on: ubuntu-latest
     steps:
@@ -63,28 +65,13 @@ jobs:
           message: |
             🎯 *${{ github.repository }}*
             
-            {% raw %}
-            {% if github.event_name == 'issues' and github.event.action == 'opened' %}
-            📝 *Новая задача*: ${{ github.event.issue.title }}
-            👤 *Автор*: ${{ github.event.issue.user.login }}
-            🔗 *Ссылка*: ${{ github.event.issue.html_url }}
-            {% if github.event.issue.labels[0] %}🏷️ *Метки*: {% for label in github.event.issue.labels %}${{ label.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+            ${{ github.event_name == 'issues' && github.event.action == 'opened' && format('📝 *Новая задача*: {0}\n👤 *Автор*: {1}\n🔗 *Ссылка*: {2}\n🏷️ *Метки*: {3}', github.event.issue.title, github.event.issue.user.login, github.event.issue.html_url, join(github.event.issue.labels.*.name, ', ')) || '' }}
             
-            {% elsif github.event_name == 'issues' and github.event.action == 'closed' %}
-            ✅ *Задача закрыта*: ${{ github.event.issue.title }}
-            👤 *Закрыл*: ${{ github.event.issue.user.login }}
+            ${{ github.event_name == 'issues' && github.event.action == 'closed' && format('✅ *Задача закрыта*: {0}\n👤 *Закрыл*: {1}', github.event.issue.title, github.event.issue.user.login) || '' }}
             
-            {% elsif github.event_name == 'pull_request' and github.event.action == 'opened' %}
-            🔀 *Новый Pull Request*: ${{ github.event.pull_request.title }}
-            👤 *Автор*: ${{ github.event.pull_request.user.login }}
-            🔗 *Ссылка*: ${{ github.event.pull_request.html_url }}
+            ${{ github.event_name == 'pull_request' && github.event.action == 'opened' && format('🔀 *Новый Pull Request*: {0}\n👤 *Автор*: {1}\n🔗 *Ссылка*: {2}', github.event.pull_request.title, github.event.pull_request.user.login, github.event.pull_request.html_url) || '' }}
             
-            {% elsif github.event_name == 'pull_request' and github.event.action == 'ready_for_review' %}
-            👀 *PR готов к проверке*: ${{ github.event.pull_request.title }}
-            👤 *Автор*: ${{ github.event.pull_request.user.login }}
+            ${{ github.event_name == 'pull_request' && github.event.action == 'ready_for_review' && format('👀 *PR готов к проверке*: {0}\n👤 *Автор*: {1}', github.event.pull_request.title, github.event.pull_request.user.login) || '' }}
             
-            {% else %}
-            ℹ️ *Событие*: ${{ github.event_name }} - ${{ github.event.action }}
-            {% endif %}
-            {% endraw %}
+            ${{ (github.event_name != 'issues' && github.event_name != 'pull_request') && format('ℹ️ *Событие*: {0} - {1}', github.event_name, github.event.action) || '' }}
           format: "html"
