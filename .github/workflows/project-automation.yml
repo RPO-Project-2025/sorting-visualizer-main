@@ -51,6 +51,7 @@ jobs:
           column-name: 'Done'
           github-token: ${{ secrets.PROJECT_PAT }}
 
+    # Уведомление в Telegram о важных событиях
   telegram-notification:
     runs-on: ubuntu-latest
     steps:
